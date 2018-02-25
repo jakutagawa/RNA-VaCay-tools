@@ -11,7 +11,7 @@ output:
 chr pos1    pos2    vaf base
 22  234234  234237  0.25    A
 
-python generate_random_mutations.py -t SNP -mf October_2016_whitelist_2583.snv_mnv_indel.maf.short >October_2016_whitelist_2583.snv_mnv_indel.maf.random
+python generate_random_mutations.py -t SNP -mf October_2016_whitelist_2583.snv_mnv_indel.short.maf >October_2016_whitelist_2583.snv_mnv_indel.random.maf
 """
 
 import sys
@@ -129,8 +129,8 @@ class CommandLine() :
                                              usage = '%(prog)s -t SNP -mf mut.maf'
                                              )
         self.parser.add_argument('-t','--mutationType', dest='mut_type',
-                                 action='store',type=str, required=True, nargs='+',
-                                 help='mutation types desired')
+                                 action='store',type=str, required=True,
+                                 nargs='+', help='mutation types desired')
 
         self.parser.add_argument('-mf','--mafFilename', dest='maf_filename',
                                  action='store',type=str, required=True,
@@ -157,7 +157,8 @@ class CommandLine() :
 
 def main(my_command_line=None):
     """
-    Instantiate RandomMutationListGenerator class. Load MAF. Output random mutations.
+    Instantiate RandomMutationListGenerator class. Load MAF. Select random
+    mutations. Output random mutations to sys output.
     """
     my_command_line = CommandLine(my_command_line)
     random_mutation_list = RandomMutationListGenerator(my_command_line.args)
