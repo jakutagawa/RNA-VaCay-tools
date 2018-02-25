@@ -26,6 +26,7 @@ class RandomMutationListGenerator :
         self.maf_filename = arguments.maf_filename
         self.mut_type = arguments.mut_type
         self.seed_num = arguments.seed_num
+        self.mut_num = arguments.mut_num
 
         self.all_mutations = list()
         self.random_mutations = list()
@@ -36,23 +37,23 @@ class RandomMutationListGenerator :
         Load all data into main list
         """
         counter = 0
-        empty_counter = 0
-        overlapping_counter = 0
 
         for chrom,pos1,pos2,mut_type,mutation,vaf in self.read_maf(self.maf_filename):
             counter += 1
             new_base = mutation.split('>')[1]
             mut_entry = (chrom,pos1,pos2,vaf,new_base)
             self.all_mutations.append(mut_entry)
+            if counter % 1000 == 0:
+                sys.stderr.write('loaded ' + str(counter) + ' mutations \n')
 
-        sys.stderr.write('loaded ' + str(counter) + ' mutations \n')
+        sys.stderr.write('finished loading ' + str(counter) + ' mutations \n')
 
     def randomize (self):
         """
         Randomize list with user-defined seed
         """
-        random.seed( self.seed_num )
-        self.random_mutations = random.sample(self.all_mutations, 1000)
+        random.seed(self.seed_num)
+        self.random_mutations = random.sample(self.all_mutations, self.mut_num)
 
     def outputData (self):
         """
@@ -86,12 +87,12 @@ class RandomMutationListGenerator :
                 mutation = split_line[14]
                 line_num = counter
 
-                # some VAF values are split or missing
+                # some VAF values are split or missing or NA
                 vaf = split_line[28].split('|')[0]
-                if vaf:
-                    float_vaf = float(vaf)
-                else:
+                if vaf == 'NA' or not vaf:
                     vaf = 0
+                else:
+                    float_vaf = float(vaf)
 
                 # only yield if mutation type is correct and vaf not 0
                 if mut_type in (self.mut_type) and vaf > 0:
@@ -138,6 +139,9 @@ class CommandLine() :
         self.parser.add_argument('-s','--randomSeed', dest='seed_num',
                                  action='store',type=int, default=15,
                                  help='random seed number')
+        self.parser.add_argument('-n','--mutationCount', dest='mut_num',
+                                 action='store',type=int, default=1000,
+                                 help='number of mutations desired')
         """
         self.parser.add_argument('-of','--outputFile', dest='output_file',
                                  action='store',type=str, required=True,
@@ -151,11 +155,11 @@ class CommandLine() :
             self.args = self.parser.parse_args(inOpts)
 
 
-def main(myCommandLine=None):
+def main(my_command_line=None):
     """
     Instantiate RandomMutationListGenerator class. Load MAF. Output random mutations.
     """
-    my_command_line = CommandLine(myCommandLine)
+    my_command_line = CommandLine(my_command_line)
     random_mutation_list = RandomMutationListGenerator(my_command_line.args)
 
     random_mutation_list.load_maf()
