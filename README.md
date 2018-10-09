@@ -1,2 +1,3 @@
-# RNA-variant-calling
-scripts for RNA variant calling project
+# RNA-VaCay-tools
+
+assorted scripts for RNA variant calling project
