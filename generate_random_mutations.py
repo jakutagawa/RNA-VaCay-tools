@@ -11,7 +11,7 @@ output:
 chr pos1    pos2    vaf base
 22  234234  234237  0.25    A
 
-python generate_random_mutations.py -t SNP -mf October_2016_whitelist_2583.snv_mnv_indel.short.maf >October_2016_whitelist_2583.snv_mnv_indel.random.maf
+python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 200 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt
 """
 
 import sys
@@ -27,6 +27,7 @@ class RandomMutationListGenerator :
         self.mut_type = arguments.mut_type
         self.seed_num = arguments.seed_num
         self.mut_num = arguments.mut_num
+        self.random_vaf = arguments.random_vaf
 
         self.all_mutations = list()
         self.random_mutations = list()
@@ -43,7 +44,7 @@ class RandomMutationListGenerator :
             new_base = mutation.split('>')[1]
             mut_entry = (chrom,pos1,pos2,vaf,new_base)
             self.all_mutations.append(mut_entry)
-            if counter % 1000 == 0:
+            if counter % 10000 == 0:
                 sys.stderr.write('loaded ' + str(counter) + ' mutations \n')
 
         sys.stderr.write('finished loading ' + str(counter) + ' mutations \n')
@@ -55,7 +56,7 @@ class RandomMutationListGenerator :
         random.seed(self.seed_num)
         self.random_mutations = random.sample(self.all_mutations, self.mut_num)
 
-    def outputData (self):
+    def output_data (self):
         """
         Print data to sys output
         """
@@ -67,9 +68,9 @@ class RandomMutationListGenerator :
         sys.stderr.write('output ' + str(count) + ' random mutations \n')
 
     def read_maf (self, maf_filename):
-        '''
+        """
         Read in MAF and parse line for necessary values.
-        '''
+        """
 
         with open(maf_filename) as fileH:
             # read the header
@@ -89,7 +90,9 @@ class RandomMutationListGenerator :
 
                 # some VAF values are split or missing or NA
                 vaf = split_line[28].split('|')[0]
-                if vaf == 'NA' or not vaf:
+                if self.random_vaf:
+                    vaf = round(random.random(),2)
+                elif vaf == 'NA' or not vaf:
                     vaf = 0
                 else:
                     float_vaf = float(vaf)
@@ -102,7 +105,7 @@ class RandomMutationListGenerator :
 
 
 class CommandLine() :
-    '''
+    """
     modified from David Bernick
 
     Handle the command line, usage and help requests.
@@ -114,19 +117,19 @@ class CommandLine() :
     attributes:
     myCommandLine.args is a dictionary which includes each of the available command line arguments as
     myCommandLine.args['option']
-    '''
+    """
 
     def __init__(self, inOpts=None) :
-        '''
+        """
         CommandLine constructor.
         Implements a parser to interpret the command line argv string using argparse.
-        '''
+        """
         import argparse
         self.parser = argparse.ArgumentParser(description = 'Program prolog - Specify the input files and conditions',
                                              epilog = 'Program epilog - parameters of infiles must be given.',
                                              add_help = True, #default is True
                                              prefix_chars = '-',
-                                             usage = '%(prog)s -t SNP -mf mut.maf'
+                                             usage = '%(prog)s -t SNP -mf mut.maf -n 200'
                                              )
         self.parser.add_argument('-t','--mutationType', dest='mut_type',
                                  action='store',type=str, required=True,
@@ -136,6 +139,9 @@ class CommandLine() :
                                  action='store',type=str, required=True,
                                  help='MAF filename')
 
+        self.parser.add_argument('-rv','--randomVAF', dest='random_vaf',
+                                 action='store_true', default=False,
+                                 help='randomize VAFs')
         self.parser.add_argument('-s','--randomSeed', dest='seed_num',
                                  action='store',type=int, default=15,
                                  help='random seed number')
@@ -165,7 +171,7 @@ def main(my_command_line=None):
 
     random_mutation_list.load_maf()
     random_mutation_list.randomize()
-    random_mutation_list.outputData()
+    random_mutation_list.output_data()
 
 
 if __name__ == "__main__":
