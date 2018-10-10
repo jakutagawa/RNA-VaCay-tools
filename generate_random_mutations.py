@@ -42,7 +42,7 @@ class RandomMutationListGenerator :
         for chrom,pos1,pos2,mut_type,mutation,vaf in self.read_maf(self.maf_filename):
             counter += 1
             new_base = mutation.split('>')[1]
-            mut_entry = (chrom,pos1,pos2,vaf,new_base)
+            mut_entry = (chrom,pos1,pos2,vaf,new_base,mut_type)
             self.all_mutations.append(mut_entry)
             if counter % 10000 == 0:
                 sys.stderr.write('loaded ' + str(counter) + ' mutations \n')
@@ -63,7 +63,7 @@ class RandomMutationListGenerator :
         for count, mutation in enumerate(self.random_mutations, 1):
             sys.stdout.write(str(mutation[0]) + '\t' + str(mutation[1]) + '\t')
             sys.stdout.write(str(mutation[2]) + '\t' + str(mutation[3]) + '\t')
-            sys.stdout.write(str(mutation[4]) + '\n')
+            sys.stdout.write(str(mutation[4]) + '\t' + str(mutation[5])+ '\n')
 
         sys.stderr.write('output ' + str(count) + ' random mutations \n')
 
@@ -91,7 +91,7 @@ class RandomMutationListGenerator :
                 # some VAF values are split or missing or NA
                 vaf = split_line[28].split('|')[0]
                 if self.random_vaf:
-                    vaf = round(random.random(),2)
+                    vaf = round(random.random(),4)
                 elif vaf == 'NA' or not vaf:
                     vaf = 0
                 else:
@@ -132,11 +132,11 @@ class CommandLine() :
                                              usage = '%(prog)s -t SNP -mf mut.maf -n 200'
                                              )
         self.parser.add_argument('-t','--mutationType', dest='mut_type',
-                                 action='store',type=str, required=True,
+                                 action='store', type=str, required=True,
                                  nargs='+', help='mutation types desired')
 
         self.parser.add_argument('-mf','--mafFilename', dest='maf_filename',
-                                 action='store',type=str, required=True,
+                                 action='store', type=str, required=True,
                                  help='MAF filename')
 
         self.parser.add_argument('-rv','--randomVAF', dest='random_vaf',
