@@ -259,6 +259,8 @@ class Samvar :
         with pysam.AlignmentFile(self.bam_output, "wb", header = self.bamfile.header) as outf:
             for read in self.bamfile.fetch():
                 total_read_count += 1
+                if (total_read_count % 10000) == 0:
+                    sys.stderr.write(str(total_read_count) + ' reads written \n')
                 read_id = (read.query_name, read.reference_start)
                 if read_id not in self.reads_to_mutate.keys():
                     outf.write(read)
