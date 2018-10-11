@@ -8,8 +8,8 @@ generate a list of mutations in bed-like file for BAMSurgeon.
 
 input: MAF file
 output:
-chr pos1    pos2    vaf base
-22  234234  234237  0.25    A
+chr pos1    pos2    vaf base    mutation_type
+22  234234  234234  0.25    A   SNP
 
 python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 200 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt
 """
