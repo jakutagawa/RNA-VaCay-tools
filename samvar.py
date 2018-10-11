@@ -7,7 +7,9 @@ Adds simple variants into a BAM/SAM file. Reads in a text file with variant
 locations, base change, allele frequency and mutation type. Outputs new BAM/SAM
 file with variants.
 
-Sample command - user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
+Sample commands -
+user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
+user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
 """
 import sys
 import random
@@ -26,9 +28,11 @@ class Samvar :
         self.sam_output = arguments.sam_output
         self.bam_output = arguments.bam_output
 
-        self.samfile = pysam.AlignmentFile(self.sam_input,"r")
-        self.bamfile = pysam.AlignmentFile(self.bam_input,"rb")
-        self.sam_header = self.samfile.header
+        if self.sam_input:
+            self.samfile = pysam.AlignmentFile(self.sam_input,"r")
+            self.sam_header = self.samfile.header
+        if self.bam_input:
+            self.bamfile = pysam.AlignmentFile(self.bam_input,"rb")
 
         self.seed_num = arguments.seed
 
@@ -667,15 +671,15 @@ class CommandLine() :
                                  help='input BAM file location')
         self.parser.add_argument('-is','--inputSAM', dest='sam_input',
                                  action='store', default = '', type=str,
-                                 required=True,
+                                 required=False,
                                  help='input SAM file location')
         self.parser.add_argument('-os','--outputSAM', dest='sam_output',
                                  action='store', default = '', type=str,
-                                 required=True,
+                                 required=False,
                                  help='output SAM file location')
         self.parser.add_argument('-ob','--outputBAM', dest='bam_output',
                                  action='store', default = '', type=str,
-                                 required=False,
+                                 required=True,
                                  help='output BAM file location')
         self.parser.add_argument('-rs','--randomSeed', dest='seed',
                                  action='store', type=int, default=10,
