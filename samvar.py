@@ -2,25 +2,27 @@
 # Name: Jon Akutagawa
 # Date: 18-08-14
 
-"""
+'''
 Adds simple variants into a BAM/SAM file. Reads in a text file with variant
 locations, base change, allele frequency and mutation type. Outputs new BAM/SAM
 file with variants.
 
 Sample commands -
 user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
-user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
-"""
+user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -ib /scratch/jakutagawa/icgc/bams/normal/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam.with_variants.bam
+'''
 import sys
 import random
 import pysam
 import re
 
+from Bio import pairwise2
+
 class Samvar :
     def __init__ (self, arguments):
-        """
+        '''
         Initialize filename passed in and values needed for conversion.
-        """
+        '''
         # create names for filenames
         self.variant_file = arguments.variant_file
         self.sam_input = arguments.sam_input
@@ -134,26 +136,70 @@ class Samvar :
         read_id = (read.query_name, read.reference_start)
         ref_positions = read.get_reference_positions(full_length = True)
         old_seq = read.query_sequence
+        old_seq2 = read.query_sequence
         old_cigar = read.cigartuples
+        old_md = read.get_tag('MD')
         query_pos = (read.query_alignment_start, read.query_alignment_end)
 
-        for mutation in self.reads_to_mutate[read_id]:
+        #if len(self.reads_to_mutate[read_id]) > 2:
+        #    print (read_id)
+        print (read_id)
+        print (old_cigar)
 
+        for mutation in self.reads_to_mutate[read_id]:
+            #print (mutation)
             var_pos1 = mutation[0]
             var_pos2 = mutation[1]
             new_base = mutation[2]
 
-            new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
-            old_seq = new_seq
+            #new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
+            #old_seq = new_seq
+            new_attributes = self.edit_seq_cigar_and_md(old_seq2,old_cigar,old_md,new_base,var_pos1,ref_positions)
+            old_seq2 = str(new_attributes[0])
+            old_cigar = list(new_attributes[1])
+            old_md = str(new_attributes[2])
+            print (old_seq2)
+            print (old_cigar)
+            print (old_md)
 
-            new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
-            old_cigar = new_cigar
+            #new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
+            #old_cigar = new_cigar
 
-
+        #ref_seq = read.get_reference_sequence()
+        #print (read.cigarstring)
+        #print (read.get_reference_sequence())
+        #print (read.query_sequence)
+        #print (new_seq)
+        #print (old_seq)
+        #print (new_attributes[0])
+        #new_seq = new_attributes[0]
+        #new_cigar = new_attributes[1]
+        #new_md = new_attributes[2]
+        #if read.cigarstring != '101M':
+        #    print (read.get_tag('MD'))
+        #    print (read.get_aligned_pairs(with_seq=True))
+        """
+        if read.query_name == 'HISEQ4_0118:2:1316:1852:9553#GGCTAC':
+            print (str(read.query_name) + ' added ' + str(len(self.reads_to_mutate[read_id])) + ' mutations')
+            print (ref_seq)
+            print (read.query_sequence)
+            print (read.cigarstring)
+            print (read.cigartuples)
+            print (new_seq)
+            '''
+            print (new_cigar)
+            gen_cigar = self.generate_cigar (ref_seq, new_seq, True)
+            if ("I" in gen_cigar) or ("D" in gen_cigar):
+                print (self.create_pairwise_alignment(ref_seq, new_seq, True))
+                print (gen_cigar)
+            else:
+                print (gen_cigar)
+            '''
+        """
         qualities_copy = read.query_qualities
-        read.query_sequence = new_seq
+        #read.query_sequence = new_seq
         read.query_qualities = qualities_copy
-        read.cigartuples = new_cigar
+        #read.cigartuples = new_cigar
         return read
 
 
@@ -167,13 +213,156 @@ class Samvar :
         else:
             return seq
 
-    def edit_cigar (self, cigartuples, alignment_seq, query_pos, new_base, var_pos, ref_positions):
+    def create_pairwise_alignment(self, ref_seq=None, query_seq=None, local=True):
         '''
-        Edit cigar sequence if changes necessary
+        Create alignment table from two strings using pairwise2 package
+        :param ref_seq: string for reference squence
+        :param query_seq: string for query sequence
+        :param local: if true do local alignment else do global
+        :return: dictionary with 'reference' and 'query' accessible alignment sequences
         '''
+        assert ref_seq is not None, "Must set reference sequence"
+        assert query_seq is not None, "Must set query sequence"
+
+        if local:
+            alignments = pairwise2.align.localms(ref_seq.upper(), query_seq.upper(), 1, -10, -10, -10,
+                                                 one_alignment_only=True)
+
+        else:
+            alignments = pairwise2.align.globalms(ref_seq.upper(), query_seq.upper(), 2, -0.5, -1, -0.3,
+                                                  one_alignment_only=True)
+        # print(format_alignment(*alignments[0]))
+        return {'reference': alignments[0][0], 'query': alignments[0][1]}
+
+    def generate_cigar (self, ref_seq=None, query_seq=None, local=True):
+        '''
+        Generate CIGAR from alignment of two reads
+        :param ref_seq: string for reference squence
+        :param query_seq: string for query sequence
+        :param local: bool for local or global alignment
+        '''
+        assert ref_seq is not None, "Must set reference sequence"
+        assert query_seq is not None, "Must set query sequence"
+
+        alignment = self.create_pairwise_alignment(ref_seq=ref_seq, query_seq=query_seq, local=local)
+        final_str = str()
+        # CIGAR = {"M": 0, "I": 0, "D": 0, "N": 0, "S": 0, "H": 0, "P": 0, "=": 0, "X": 0}
+        current_op = str()
+        op_count = 0
+        for ref_seq, query_seq in zip(alignment['reference'], alignment["query"]):
+            if ref_seq == query_seq:
+                # matches
+                if current_op == "M":
+                    op_count += 1
+                    current_op = "M"
+                else:
+                    final_str += str(op_count) + current_op
+                    current_op = "M"
+                    op_count = 1
+            elif ref_seq == '-':
+                # soft clipped sequences
+                if current_op == "S":
+                    op_count += 1
+                    current_op = "S"
+                elif current_op == str():
+                    final_str += str(op_count) + current_op
+                    current_op = "S"
+                    op_count = 1
+                # insertions
+                elif current_op == "I":
+                    op_count += 1
+                    current_op = "I"
+                else:
+                    final_str += str(op_count) + current_op
+                    current_op = "I"
+                    op_count = 1
+            elif query_seq == '-':
+                # deletions
+                if current_op == "D":
+                    op_count += 1
+                    current_op = "D"
+                else:
+                    final_str += str(op_count) + current_op
+                    current_op = "D"
+                    op_count = 1
+            else:
+                # mismatches
+                if current_op == "S":
+                    op_count += 1
+                    current_op = "S"
+                else:
+                    final_str += str(op_count) + current_op
+                    current_op = "S"
+                    op_count = 1
+        if current_op == "I":
+            final_str += str(op_count) + "S"
+        else:
+            final_str += str(op_count) + current_op
+        # remove initial zero
+        return final_str[1:]
+
+    def edit_md_tag (self, md_tag, new_base, var_index, clip_lengths):
+        split_md = re.split("(\D+)", md_tag)
+        bases = ['A','C','T','G']
+        md_index = 0
+        new_md = ''
+        if clip_lengths[0] or clip_lengths[1]:
+            var_index -= clip_lengths[0]
+
+        for index, md_piece in enumerate(split_md):
+            if md_piece.isdigit():
+                md_index += int(md_piece)
+
+                if var_index <= int(md_index):
+                    if var_index == md_index or var_index == 0:
+                        new_md += str(int(md_piece) - var_index - 1) + ''.join(split_md[index+1:])
+                    elif var_index != 0:
+                        new_md += str(var_index)
+                        new_md += new_base + str(int(md_piece) - var_index - 1) + ''.join(split_md[index+1:])
+                    return new_md
+
+                else:
+                    new_md += md_piece
+
+            elif md_piece.isalpha():
+                for base_index, base in enumerate(md_piece):
+                    if base in bases:
+                        md_index += 1
+                    if var_index == int(md_index):
+                        new_md += new_base + md_piece[base_index+1:] + ''.join(split_md[index+1:])
+                        return new_md
+                    else:
+                        new_md += base
+
+        return new_md
+
+
+
+
+
+    def edit_seq_cigar_and_md (self, seq, cigartuples, md_tag, new_base, var_pos, ref_positions):
+        '''
+        Edit cigar sequence (mostly soft clips) if changes necessary
+        '''
+
         if var_pos in ref_positions:
+            #print (seq)
             var_index = ref_positions.index(var_pos)
+            new_seq = (seq[:var_index] + new_base + seq[var_index+1:])
             new_cigar = ''
+            clip_lengths = [0,0]
+
+            if len(cigartuples) > 1:
+                if cigartuples[0][0] == 4:
+                    clip_lengths[0] = cigartuples[0][1]
+                    #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index,clip_lengths)
+                if cigartuples[-1][0] == 4:
+                    clip_lengths[1] = cigartuples[-1][1]
+                    #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index,clip_lengths)
+            #else:
+            new_md_tag = self.edit_md_tag(md_tag,new_base,var_index, clip_lengths)
+            #print (var_index)
+            #print (new_seq)
 
             # check if cigar is a perfect match - '101M'
             if cigartuples == [(0,101)]:
@@ -183,9 +372,50 @@ class Samvar :
                 elif var_index == 100:
                     new_cigar = [(0,100),(4,1)]
                 else:
-                    new_cigar = [(0,var_index),(4,1),(0,101 - var_index - 1)]
-                return new_cigar
+                    new_cigar = cigartuples
+
+
+                #new_md_tag = str(var_index) + new_base + str(100-var_index)
+                #print (new_seq)
+                return (new_seq, new_cigar, new_md_tag)
+
+
             else:
+                cigar_index = 0
+                for op_index, op_tuple in enumerate(cigartuples):
+                    cigar_index += op_tuple[1]
+                    # convert M to S at the beginning
+                    if op_index == 0 and var_index == cigar_index:
+                        if op_tuple[0] == 4 and cigartuples[1][0] == 0:
+                            first_tuple = list(cigartuples[0])
+                            second_tuple = list(cigartuples[1])
+                            first_tuple[1] += 1
+                            second_tuple[1] -= 1
+                            new_cigar = [tuple(first_tuple),tuple(second_tuple)] + cigartuples[2:]
+                            #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
+                            return (new_seq, new_cigar, new_md_tag)
+
+
+
+                    # convert M to S at the end
+                    elif op_index == len(cigartuples) - 2 and var_index == cigar_index:
+                        if op_tuple[0] == 0 and cigartuples[-1][0] == 4:
+                            last_tuple = list(cigartuples[-1])
+                            penultimate_tuple = list(cigartuples[-2])
+                            last_tuple[1] += 1
+                            penultimate_tuple[1] -= 1
+                            new_cigar = cigartuples[:-2] + [tuple(penultimate_tuple),tuple(last_tuple)]
+                            #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
+                            return (new_seq, new_cigar, new_md_tag)
+
+                    elif var_index < cigar_index:
+                        #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
+                        return (new_seq, cigartuples, new_md_tag)
+
+                return (new_seq, cigartuples, new_md_tag)
+
+
+            """
                 if alignment_seq[var_index - query_pos[0]] == new_base:
                     new_op = 0
                 else:
@@ -217,9 +447,10 @@ class Samvar :
                         cleaned_new_cigar = self.clean_cigar(new_cigar)
                         return cleaned_new_cigar
                     old_pos += cigar_tuple[1]
-
+            """
+            return (new_seq,cigartuples,md_tag)
         else:
-            return cigartuples
+            return (seq,cigartuples,md_tag)
 
     def clean_cigar (self, cigar):
         '''
@@ -311,7 +542,7 @@ class Samvar :
                 #if (x.cigarstring != '101M'):
                 var_index = var_pos1 - x.reference_start
                 #print str(x.get_reference_name())
-                """
+                '''
                 print (x.cigarstring)
                 print (x.cigar)
                 print (x.reference_name)
@@ -320,7 +551,7 @@ class Samvar :
 
                 print str(x.get_blocks())
                 print (x.query_name)
-                """
+                '''
 
                 ref_positions = x.get_reference_positions(full_length = True)
                 #clipped_ref_positions = x.get_reference_positions()
@@ -331,14 +562,14 @@ class Samvar :
 
 
                 new_seq = self.edit_sequence(x.query_sequence,new_base,var_pos1,ref_positions)
-                """
+                '''
                 if x.query_name == 'HISEQ4_0118:2:2116:2109:56685#GGCTAC':
                     print str(x.get_reference_positions(full_length = True))
                     print (x.cigarstring)
                     print (x.query_alignment_sequence)
                     print (x.query_sequence)
                     print (new_seq)
-                """
+                '''
 
                 #print (x.query_alignment_start)
                 #print (x.query_alignment_end)
@@ -406,11 +637,11 @@ class Samvar :
                 var_pos2 = int(split_location[2])
                 new_base = self.variants_dict[location][4]
 
-                """
+                '''
                 id = read[0]
                 old_cigar = read[1]
                 ref_start = int(read[2])
-                """
+                '''
                 id = read.query_name
                 old_cigar = read.cigar
                 ref_start = int(read.reference_start)
@@ -500,7 +731,7 @@ class Samvar :
 
                     #print (split_cigar)
                     #print (cigar_pieces)
-                    """
+                    '''
                     for val in range(0,cigar_pieces):
                         print(split_cigar[2*val])
                         if split_cigar[2*val+1] == 'S':
@@ -515,11 +746,11 @@ class Samvar :
                         if var_index < split_cigar[0]:
                             new_cigar = str(var_index) + 'M' + str(var_index + 1) + 'S' + str(101 - var_index - 1)
 
-                    """
+                    '''
                     #seq = read[3]
                     #var_index = var_pos1 - ref_start
                     #print(seq[:var_index])
-                    """
+                    '''
                     ref_start = int(read[2])
                     var_index = var_pos1 - ref_start
                     seq = read[3]
@@ -528,7 +759,7 @@ class Samvar :
                     print (seq)
                     print (self.split_cigar(cigar))
                     print (seq[var_index])
-                    """
+                    '''
                 if new_read:
                     self.mutated_reads[(id,ref_start)] = new_read
         print (self.mutated_reads)
@@ -693,10 +924,10 @@ class CommandLine() :
             self.args = self.parser.parse_args(inOpts)
 
 def main(my_command_line=None):
-    """
+    '''
     Instantiate Samvar class. Get mutation BED and gene names from sys
     input filenames. Can output to a sys output file.
-    """
+    '''
     my_command_line = CommandLine(my_command_line)
     my_samvar = Samvar(my_command_line.args)
 
@@ -706,7 +937,8 @@ def main(my_command_line=None):
     #my_samvar.load_reads()
     my_samvar.count_and_shuffle_reads_with_variants()
     my_samvar.output_reads_to_bam()
-    my_samvar.sort_and_index_bam()
+    #my_samvar.sort_and_index_bam()
+    #print(my_samvar.generate_cigar('GGTACCAGTTTAGGTTCCTAAGTAATAGTGACCCTTTCACGTCCTGGAGCCCGAGTGGACCAATCGGAAGCCTAAGTGACGATGACCCTCGCATGCCCTAG','GGTACAAGTTTAGGTTCCTAAGTAATAGTGACCCTTTCACGTCCTGGAGCCCGAGTGGACCAATCGGAAGCCCAAGTGACGATGACCCTCGCATGCCCTAG',True))
 
 
 if __name__ == "__main__":
