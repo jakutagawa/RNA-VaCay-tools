@@ -143,8 +143,8 @@ class Samvar :
 
         #if len(self.reads_to_mutate[read_id]) > 2:
         #    print (read_id)
-        print (read_id)
-        print (old_cigar)
+        #print (read_id)
+        #print (old_cigar)
 
         for mutation in self.reads_to_mutate[read_id]:
             #print (mutation)
@@ -158,9 +158,9 @@ class Samvar :
             old_seq2 = str(new_attributes[0])
             old_cigar = list(new_attributes[1])
             old_md = str(new_attributes[2])
-            print (old_seq2)
-            print (old_cigar)
-            print (old_md)
+            #print (old_seq2)
+            #print (old_cigar)
+            #print (old_md)
 
             #new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
             #old_cigar = new_cigar
@@ -172,9 +172,9 @@ class Samvar :
         #print (new_seq)
         #print (old_seq)
         #print (new_attributes[0])
-        #new_seq = new_attributes[0]
-        #new_cigar = new_attributes[1]
-        #new_md = new_attributes[2]
+        new_seq = new_attributes[0]
+        new_cigar = new_attributes[1]
+        new_md = new_attributes[2]
         #if read.cigarstring != '101M':
         #    print (read.get_tag('MD'))
         #    print (read.get_aligned_pairs(with_seq=True))
@@ -197,9 +197,10 @@ class Samvar :
             '''
         """
         qualities_copy = read.query_qualities
-        #read.query_sequence = new_seq
+        read.query_sequence = new_seq
         read.query_qualities = qualities_copy
-        #read.cigartuples = new_cigar
+        read.cigartuples = new_cigar
+        read.set_tag('MD', new_md, value_type='Z')
         return read
 
 
@@ -302,6 +303,10 @@ class Samvar :
         return final_str[1:]
 
     def edit_md_tag (self, md_tag, new_base, var_index, clip_lengths):
+        '''
+        Edit existing MD tag based on mutation location and return updated MD
+        tag
+        '''
         split_md = re.split("(\D+)", md_tag)
         bases = ['A','C','T','G']
         md_index = 0
@@ -310,6 +315,7 @@ class Samvar :
             var_index -= clip_lengths[0]
 
         for index, md_piece in enumerate(split_md):
+            # edits MD piece if a number specifying matches
             if md_piece.isdigit():
                 md_index += int(md_piece)
 
@@ -323,7 +329,7 @@ class Samvar :
 
                 else:
                     new_md += md_piece
-
+            # edits MD piece if a mismatched base already exists at that location
             elif md_piece.isalpha():
                 for base_index, base in enumerate(md_piece):
                     if base in bases:
@@ -379,9 +385,9 @@ class Samvar :
                 #print (new_seq)
                 return (new_seq, new_cigar, new_md_tag)
 
-
             else:
                 cigar_index = 0
+                # loop through each cigar op tuple
                 for op_index, op_tuple in enumerate(cigartuples):
                     cigar_index += op_tuple[1]
                     # convert M to S at the beginning
@@ -394,8 +400,6 @@ class Samvar :
                             new_cigar = [tuple(first_tuple),tuple(second_tuple)] + cigartuples[2:]
                             #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
                             return (new_seq, new_cigar, new_md_tag)
-
-
 
                     # convert M to S at the end
                     elif op_index == len(cigartuples) - 2 and var_index == cigar_index:
