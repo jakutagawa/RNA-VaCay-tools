@@ -9,7 +9,7 @@ file with variants.
 
 Sample commands -
 user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
-user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -ib /scratch/jakutagawa/icgc/bams/normal/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam.with_variants.bam
+user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -ib /scratch/jakutagawa/icgc/bams/normal/DO46933/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam.with_variants.bam
 '''
 import sys
 import random
@@ -135,15 +135,16 @@ class Samvar :
         '''
         read_id = (read.query_name, read.reference_start)
         ref_positions = read.get_reference_positions(full_length = True)
+        ref_seq = read.get_reference_sequence()
         old_seq = read.query_sequence
-        old_seq2 = read.query_sequence
+        old_query_seq = read.query_sequence
         old_cigar = read.cigartuples
         old_md = read.get_tag('MD')
         query_pos = (read.query_alignment_start, read.query_alignment_end)
 
         #if len(self.reads_to_mutate[read_id]) > 2:
         #    print (read_id)
-        #print (read_id)
+        print (read_id)
         #print (old_cigar)
 
         for mutation in self.reads_to_mutate[read_id]:
@@ -154,11 +155,11 @@ class Samvar :
 
             #new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
             #old_seq = new_seq
-            new_attributes = self.edit_seq_cigar_and_md(old_seq2,old_cigar,old_md,new_base,var_pos1,ref_positions)
-            old_seq2 = str(new_attributes[0])
+            new_attributes = self.edit_seq_cigar_and_md(ref_seq,old_query_seq,old_cigar,old_md,new_base,var_pos1,ref_positions)
+            old_query_seq = str(new_attributes[0])
             old_cigar = list(new_attributes[1])
             old_md = str(new_attributes[2])
-            #print (old_seq2)
+            #print (old_query_seq)
             #print (old_cigar)
             #print (old_md)
 
@@ -174,7 +175,7 @@ class Samvar :
         #print (new_attributes[0])
         new_seq = new_attributes[0]
         new_cigar = new_attributes[1]
-        new_md = new_attributes[2]
+        #new_md = new_attributes[2]
         #if read.cigarstring != '101M':
         #    print (read.get_tag('MD'))
         #    print (read.get_aligned_pairs(with_seq=True))
@@ -200,7 +201,7 @@ class Samvar :
         read.query_sequence = new_seq
         read.query_qualities = qualities_copy
         read.cigartuples = new_cigar
-        read.set_tag('MD', new_md, value_type='Z')
+        #read.set_tag('MD', new_md, value_type='Z')
         return read
 
 
@@ -302,7 +303,7 @@ class Samvar :
         # remove initial zero
         return final_str[1:]
 
-    def edit_md_tag (self, md_tag, new_base, var_index, clip_lengths):
+    def edit_md_tag (self, md_tag, new_base, var_index, ref_seq, query_seq, new_seq, clip_lengths):
         '''
         Edit existing MD tag based on mutation location and return updated MD
         tag
@@ -310,9 +311,19 @@ class Samvar :
         split_md = re.split("(\D+)", md_tag)
         bases = ['A','C','T','G']
         md_index = 0
-        new_md = ''
+        new_md = list()
+
+
+        print (var_index)
+        # adjust index for preceding soft clip
         if clip_lengths[0] or clip_lengths[1]:
             var_index -= clip_lengths[0]
+            #ref_base =
+        #else:
+        ref_base = ref_seq[var_index]
+
+        print (var_index)
+        print (ref_base)
 
         for index, md_piece in enumerate(split_md):
             # edits MD piece if a number specifying matches
@@ -321,53 +332,61 @@ class Samvar :
 
                 if var_index <= int(md_index):
                     if var_index == md_index or var_index == 0:
-                        new_md += str(int(md_piece) - var_index - 1) + ''.join(split_md[index+1:])
+                        new_md += [str(int(md_piece) - var_index - 1)] + split_md[index+1:]
                     elif var_index != 0:
-                        new_md += str(var_index)
-                        new_md += new_base + str(int(md_piece) - var_index - 1) + ''.join(split_md[index+1:])
-                    return new_md
+                        new_md += [str(var_index)]
+                        new_md += [ref_base, str(int(md_piece) - var_index - 1)] + split_md[index+1:]
+                    return ''.join(new_md)
 
                 else:
-                    new_md += md_piece
+                    new_md += [md_piece]
             # edits MD piece if a mismatched base already exists at that location
             elif md_piece.isalpha():
                 for base_index, base in enumerate(md_piece):
                     if base in bases:
                         md_index += 1
                     if var_index == int(md_index):
-                        new_md += new_base + md_piece[base_index+1:] + ''.join(split_md[index+1:])
-                        return new_md
+                        if new_base == base:
+                            new_md[-1] += 1
+                        else:
+                            new_md += [base] + md_piece[base_index+1:] + split_md[index+1:]
+                        return ''.join(new_md)
                     else:
-                        new_md += base
+                        new_md += [base]
 
-        return new_md
-
-
+        return ''.join(new_md)
 
 
 
-    def edit_seq_cigar_and_md (self, seq, cigartuples, md_tag, new_base, var_pos, ref_positions):
+    def edit_seq_cigar_and_md (self, ref_seq, query_seq, cigartuples, md_tag, new_base, var_pos, ref_positions):
         '''
-        Edit cigar sequence (mostly soft clips) if changes necessary
+        Edit string, cigar string (mostly soft clips), and MD tag if changes
+        are necessary
         '''
 
         if var_pos in ref_positions:
-            #print (seq)
+            #print (query_seq)
             var_index = ref_positions.index(var_pos)
-            new_seq = (seq[:var_index] + new_base + seq[var_index+1:])
+            new_seq = (query_seq[:var_index] + new_base + query_seq[var_index+1:])
             new_cigar = ''
             clip_lengths = [0,0]
 
             if len(cigartuples) > 1:
                 if cigartuples[0][0] == 4:
                     clip_lengths[0] = cigartuples[0][1]
-                    #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index,clip_lengths)
+                    print ('soft clip in front')
                 if cigartuples[-1][0] == 4:
                     clip_lengths[1] = cigartuples[-1][1]
-                    #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index,clip_lengths)
+                    print ('soft clip at end')
             #else:
-            new_md_tag = self.edit_md_tag(md_tag,new_base,var_index, clip_lengths)
-            #print (var_index)
+            print (ref_seq)
+            print (query_seq)
+            print (new_seq)
+            print (cigartuples)
+            print (clip_lengths)
+            print (md_tag)
+            new_md_tag = self.edit_md_tag(md_tag,new_base,var_index, ref_seq, query_seq, new_seq, clip_lengths)
+            print (new_md_tag)
             #print (new_seq)
 
             # check if cigar is a perfect match - '101M'
@@ -454,7 +473,7 @@ class Samvar :
             """
             return (new_seq,cigartuples,md_tag)
         else:
-            return (seq,cigartuples,md_tag)
+            return (query_seq,cigartuples,md_tag)
 
     def clean_cigar (self, cigar):
         '''
