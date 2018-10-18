@@ -142,7 +142,9 @@ class Samvar :
         old_cigar = ref_cigar
         old_md = read.get_tag('MD')
         new_md_tag = ''
+        read_direction = read.is_reverse
         query_pos = (read.query_alignment_start, read.query_alignment_end)
+        edited_pos = list(ref_positions)
         #new_clip_lengths = [0,0]
 
         #if len(self.reads_to_mutate[read_id]) > 2:
@@ -158,23 +160,38 @@ class Samvar :
 
             #new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
             #old_seq = new_seq
-            new_query_seq, new_cigar = self.edit_seq_and_cigar(ref_seq,old_query_seq,old_cigar,new_base,var_pos1,ref_positions)
+
+            new_query_seq, new_cigar, edited_pos = self.edit_seq_and_cigar(ref_seq,old_query_seq,old_cigar,new_base,var_pos1,edited_pos)
             old_query_seq = new_query_seq
             old_cigar = new_cigar
-        #print(new_cigar)
-        #new_cigar = new_attributes[1]
 
-        #print (old_query_seq)
-        #print (old_cigar)
-        #print (old_md)
+
+
 
         #new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
         #old_cigar = new_cigar
 
-
+        #if read.is_reverse:
+        #    new_cigar.reverse()
         new_md_tag = self.edit_md_tag(old_md, ref_cigar, new_cigar, ref_seq, new_query_seq)
         new_nm_tag = self.edit_nm_tag(new_md_tag)
 
+        if new_cigar[0][0] == 4:
+            if ref_cigar[0][0] == 4 and new_cigar[0][1] > ref_cigar[0][1]:
+                old_start = read.reference_start
+                if read.is_reverse:
+                    read.reference_start -= ref_cigar[0][1] - new_cigar[0][1]
+                else:
+                    read.reference_start += ref_cigar[0][1] - new_cigar[0][1]
+            elif ref_cigar[0][0] != 4:
+                old_start = read.reference_start
+                if read.is_reverse:
+                    read.reference_start += new_cigar[0][1]
+                else:
+                    read.reference_start += new_cigar[0][1]
+            #old_clip_lengths[0] = ref_cigar[0][1]
+            #new_clip_lengths[0] = new_cigar[0][1]
+            #clip_dif[0] = new_cigar[0][1] - ref_cigar[0][1]
         #ref_seq = read.get_reference_sequence()
         #print (read.cigarstring)
         #print (read.get_reference_sequence())
@@ -189,13 +206,19 @@ class Samvar :
         #    print (read.get_tag('MD'))
         #    print (read.get_aligned_pairs(with_seq=True))
         """
-        if read.query_name == 'HISEQ4_0118:2:1316:1852:9553#GGCTAC':
+        if read.query_name == 'HISEQ4_0118:2:1301:7721:63684#GGCTAC':
             print (str(read.query_name) + ' added ' + str(len(self.reads_to_mutate[read_id])) + ' mutations')
+            print (str((read.query_alignment_start, read.query_alignment_end)))
             print (ref_seq)
             print (read.query_sequence)
+            print (new_query_seq)
             print (read.cigarstring)
             print (read.cigartuples)
-            print (new_seq)
+            print (new_cigar)
+            print (read.is_reverse)
+            print (old_md)
+            print (new_md_tag)
+            #print (new_seq)
             '''
             print (new_cigar)
             gen_cigar = self.generate_cigar (ref_seq, new_seq, True)
@@ -334,6 +357,7 @@ class Samvar :
         clip_dif = [0,0]
         clipped_ref_seq = ref_seq
         clipped_query_seq = new_query_seq
+        #print (clipped_ref_seq)
 
         # check if ref and new cigar has a clip
         if len(ref_cigar) > 1 and len(new_cigar) > 1:
@@ -350,6 +374,9 @@ class Samvar :
                 new_clip_lengths[1] = new_cigar[-1][1]
                 clip_dif[1] = new_cigar[-1][1] - ref_cigar[-1][1]
 
+            #print (clip_dif)
+            #print (new_clip_lengths)
+
             # truncate sequences if necessary
             if clip_dif[0] == 0 and clip_dif[1] == 0:
                 # check if front clip changes
@@ -359,26 +386,26 @@ class Samvar :
                 if new_clip_lengths[1]:
                     clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
 
+            elif clip_dif[0] > 0 and clip_dif[1] > 0:
+                clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:-new_clip_lengths[1]+ref_cigar[-1][1]]
+                clipped_query_seq = clipped_query_seq[ew_clip_lengths[0]:-new_clip_lengths[1]]
+
             elif clip_dif[0] > 0:
-                if new_clip_lengths[0]:
+                if new_clip_lengths[1]:
+                    clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:]
+                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:-new_clip_lengths[1]]
+
+                elif new_clip_lengths[1] == 0:
                     clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:]
                     clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
-                if new_clip_lengths[1] and clip_dif[1]:
-                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]+ref_cigar[-1][1]]
-                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
-                elif new_clip_lengths[1] and clip_dif[1] == 0:
-                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]]
-                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
 
             elif clip_dif[1] > 0:
-                if new_clip_lengths[1]:
+                if new_clip_lengths[0]:
                     clipped_ref_seq = ref_seq[:-new_clip_lengths[1]+ref_cigar[-1][1]]
-                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
-                if new_clip_lengths[0] and clip_dif[0]:
-                    clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:]
-                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
-                elif new_clip_lengths[0] and clip_dif[0] == 0:
-                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]]
+                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:-new_clip_lengths[1]]
+
+                elif new_clip_lengths[0] == 0:
+                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]+ref_cigar[-1][1]]
                     clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
 
         # check if soft clip gained at front or end
@@ -408,6 +435,8 @@ class Samvar :
         else:
             new_md = ''
             base_count = 0
+            #print (clipped_ref_seq)
+            #print (clipped_query_seq)
             for index, base in enumerate(clipped_ref_seq):
                 if base == clipped_query_seq[index]:
                     base_count += 1
@@ -426,6 +455,7 @@ class Samvar :
         Edit string, cigar string (mostly soft clips), and MD tag if changes
         are necessary
         '''
+        edited_positions = list(ref_positions)
         if var_pos in ref_positions:
             #print (query_seq)
             var_index = ref_positions.index(var_pos)
@@ -448,12 +478,14 @@ class Samvar :
                 # edge cases
                 if var_index == 0:
                     new_cigar = [(4,1),(0,100)]
+                    edited_positions[var_index] = None
                 elif var_index == 100:
                     new_cigar = [(0,100),(4,1)]
+                    edited_positions[var_index] = None
                 else:
                     new_cigar = cigartuples
 
-                return (new_seq, new_cigar)
+                return new_seq, new_cigar, edited_positions
 
             else:
                 cigar_index = 0
@@ -468,7 +500,8 @@ class Samvar :
                             first_tuple[1] += 1
                             second_tuple[1] -= 1
                             new_cigar = [tuple(first_tuple),tuple(second_tuple)] + cigartuples[2:]
-                            return (new_seq, new_cigar)
+                            edited_positions[var_index] = None
+                            return new_seq, new_cigar, edited_positions
 
                     # convert M to S at the end
                     elif op_index == len(cigartuples) - 2 and var_index == cigar_index:
@@ -478,17 +511,18 @@ class Samvar :
                             last_tuple[1] += 1
                             penultimate_tuple[1] -= 1
                             new_cigar = cigartuples[:-2] + [tuple(penultimate_tuple),tuple(last_tuple)]
-                            return (new_seq, new_cigar)
+                            edited_positions[var_index] = None
+                            return new_seq, new_cigar, edited_positions
 
                     elif var_index < cigar_index:
-                        return (new_seq, cigartuples)
+                        return new_seq, cigartuples, edited_positions
 
-                return new_seq, cigartuples
+                return new_seq, cigartuples, edited_positions
 
 
-            return (new_seq,cigartuples)
+            return new_seq,cigartuples, edited_positions
         else:
-            return (query_seq,cigartuples)
+            return query_seq,cigartuples, edited_positions
 
     def clean_cigar (self, cigar):
         '''
@@ -549,7 +583,12 @@ class Samvar :
         pysam.sort("-o",sorted_output,self.bam_output)
         pysam.index(sorted_output)
 
+        # if you want to automatically convert to sam as well
+        sam_output = sorted_output[:-4] + ".sam"
+        pysam.view("-h","-o",sam_output,sorted_output, catch_stdout=False)
+
         sys.stderr.write('New sorted bam file: ' + str(sorted_output) + '\n')
+        sys.stderr.write('New sorted bam index file: ' + str(sorted_output) + '.bai\n')
 
 
     def load_reads (self):
@@ -975,8 +1014,7 @@ def main(my_command_line=None):
     #my_samvar.load_reads()
     my_samvar.count_and_shuffle_reads_with_variants()
     my_samvar.output_reads_to_bam()
-    #my_samvar.sort_and_index_bam()
-    #print(my_samvar.generate_cigar('GGTACCAGTTTAGGTTCCTAAGTAATAGTGACCCTTTCACGTCCTGGAGCCCGAGTGGACCAATCGGAAGCCTAAGTGACGATGACCCTCGCATGCCCTAG','GGTACAAGTTTAGGTTCCTAAGTAATAGTGACCCTTTCACGTCCTGGAGCCCGAGTGGACCAATCGGAAGCCCAAGTGACGATGACCCTCGCATGCCCTAG',True))
+    my_samvar.sort_and_index_bam()
 
 
 if __name__ == "__main__":
