@@ -138,13 +138,16 @@ class Samvar :
         ref_seq = read.get_reference_sequence()
         old_seq = read.query_sequence
         old_query_seq = read.query_sequence
-        old_cigar = read.cigartuples
+        ref_cigar = read.cigartuples
+        old_cigar = ref_cigar
         old_md = read.get_tag('MD')
+        new_md_tag = ''
         query_pos = (read.query_alignment_start, read.query_alignment_end)
+        #new_clip_lengths = [0,0]
 
         #if len(self.reads_to_mutate[read_id]) > 2:
         #    print (read_id)
-        print (read_id)
+        #print (str(read_id) + ' has ' + str(len(self.reads_to_mutate[read_id])) + ' mutations')
         #print (old_cigar)
 
         for mutation in self.reads_to_mutate[read_id]:
@@ -155,16 +158,22 @@ class Samvar :
 
             #new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
             #old_seq = new_seq
-            new_attributes = self.edit_seq_cigar_and_md(ref_seq,old_query_seq,old_cigar,old_md,new_base,var_pos1,ref_positions)
-            old_query_seq = str(new_attributes[0])
-            old_cigar = list(new_attributes[1])
-            old_md = str(new_attributes[2])
-            #print (old_query_seq)
-            #print (old_cigar)
-            #print (old_md)
+            new_query_seq, new_cigar = self.edit_seq_and_cigar(ref_seq,old_query_seq,old_cigar,new_base,var_pos1,ref_positions)
+            old_query_seq = new_query_seq
+            old_cigar = new_cigar
+        #print(new_cigar)
+        #new_cigar = new_attributes[1]
 
-            #new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
-            #old_cigar = new_cigar
+        #print (old_query_seq)
+        #print (old_cigar)
+        #print (old_md)
+
+        #new_cigar = self.edit_cigar(old_cigar, read.query_alignment_sequence, query_pos, new_base, var_pos1, ref_positions)
+        #old_cigar = new_cigar
+
+
+        new_md_tag = self.edit_md_tag(old_md, ref_cigar, new_cigar, ref_seq, new_query_seq)
+        new_nm_tag = self.edit_nm_tag(new_md_tag)
 
         #ref_seq = read.get_reference_sequence()
         #print (read.cigarstring)
@@ -173,8 +182,8 @@ class Samvar :
         #print (new_seq)
         #print (old_seq)
         #print (new_attributes[0])
-        new_seq = new_attributes[0]
-        new_cigar = new_attributes[1]
+        #new_seq = new_attributes[0]
+        #new_cigar = new_attributes[1]
         #new_md = new_attributes[2]
         #if read.cigarstring != '101M':
         #    print (read.get_tag('MD'))
@@ -198,10 +207,11 @@ class Samvar :
             '''
         """
         qualities_copy = read.query_qualities
-        read.query_sequence = new_seq
+        read.query_sequence = new_query_seq
         read.query_qualities = qualities_copy
         read.cigartuples = new_cigar
-        #read.set_tag('MD', new_md, value_type='Z')
+        read.set_tag('MD', new_md_tag, value_type='Z')
+        read.set_tag('NM', new_nm_tag, value_type='i')
         return read
 
 
@@ -303,7 +313,14 @@ class Samvar :
         # remove initial zero
         return final_str[1:]
 
-    def edit_md_tag (self, md_tag, new_base, var_index, ref_seq, query_seq, new_seq, clip_lengths):
+    def edit_nm_tag (self, md_tag):
+        '''
+        Count the number of mismatches in a MD tag to calculate the NM tag
+        '''
+        nm_count = sum(md_piece.isalpha() for md_piece in md_tag)
+        return nm_count
+
+    def edit_md_tag (self, md_tag, ref_cigar, new_cigar, ref_seq, new_query_seq):
         '''
         Edit existing MD tag based on mutation location and return updated MD
         tag
@@ -312,58 +329,103 @@ class Samvar :
         bases = ['A','C','T','G']
         md_index = 0
         new_md = list()
+        old_clip_lengths = [0,0]
+        new_clip_lengths = [0,0]
+        clip_dif = [0,0]
+        clipped_ref_seq = ref_seq
+        clipped_query_seq = new_query_seq
 
+        # check if ref and new cigar has a clip
+        if len(ref_cigar) > 1 and len(new_cigar) > 1:
 
-        print (var_index)
-        # adjust index for preceding soft clip
-        if clip_lengths[0] or clip_lengths[1]:
-            var_index -= clip_lengths[0]
-            #ref_base =
-        #else:
-        ref_base = ref_seq[var_index]
+            # check for leading clip
+            if ref_cigar[0][0] == 4 and new_cigar[0][0] == 4:
+                old_clip_lengths[0] = ref_cigar[0][1]
+                new_clip_lengths[0] = new_cigar[0][1]
+                clip_dif[0] = new_cigar[0][1] - ref_cigar[0][1]
 
-        print (var_index)
-        print (ref_base)
+            # check for ending clip
+            if ref_cigar[-1][0] == 4 and new_cigar[-1][0] == 4:
+                old_clip_lengths[1] = ref_cigar[-1][1]
+                new_clip_lengths[1] = new_cigar[-1][1]
+                clip_dif[1] = new_cigar[-1][1] - ref_cigar[-1][1]
 
-        for index, md_piece in enumerate(split_md):
-            # edits MD piece if a number specifying matches
-            if md_piece.isdigit():
-                md_index += int(md_piece)
+            # truncate sequences if necessary
+            if clip_dif[0] == 0 and clip_dif[1] == 0:
+                # check if front clip changes
+                if new_clip_lengths[0]:
+                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
+                # check if end clip changes
+                if new_clip_lengths[1]:
+                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
 
-                if var_index <= int(md_index):
-                    if var_index == md_index or var_index == 0:
-                        new_md += [str(int(md_piece) - var_index - 1)] + split_md[index+1:]
-                    elif var_index != 0:
-                        new_md += [str(var_index)]
-                        new_md += [ref_base, str(int(md_piece) - var_index - 1)] + split_md[index+1:]
-                    return ''.join(new_md)
+            elif clip_dif[0] > 0:
+                if new_clip_lengths[0]:
+                    clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:]
+                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
+                if new_clip_lengths[1] and clip_dif[1]:
+                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]+ref_cigar[-1][1]]
+                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
+                elif new_clip_lengths[1] and clip_dif[1] == 0:
+                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]]
+                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
 
+            elif clip_dif[1] > 0:
+                if new_clip_lengths[1]:
+                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]+ref_cigar[-1][1]]
+                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
+                if new_clip_lengths[0] and clip_dif[0]:
+                    clipped_ref_seq = ref_seq[new_clip_lengths[0]-ref_cigar[0][1]:]
+                    clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
+                elif new_clip_lengths[0] and clip_dif[0] == 0:
+                    clipped_ref_seq = ref_seq[:-new_clip_lengths[1]]
+                    clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
+
+        # check if soft clip gained at front or end
+        elif len(ref_cigar) == 1 and len(new_cigar) > 1:
+            # leading soft clip
+            if new_cigar[0][0] == 4:
+                new_clip_lengths[0] = new_cigar[0][1]
+                clip_dif[0] = new_cigar[0][1]
+
+            # check for ending clip
+            if new_cigar[-1][0] == 4:
+                new_clip_lengths[1] = new_cigar[-1][1]
+                clip_dif[1] = new_cigar[-1][1]
+
+            # clips sequences based on new soft clips
+            if new_cigar[0][0] == 4:
+                clipped_ref_seq = ref_seq[new_clip_lengths[0]:]
+                clipped_query_seq = clipped_query_seq[new_clip_lengths[0]:]
+            if new_cigar[-1][0] == 4:
+                clipped_ref_seq = ref_seq[:-new_clip_lengths[1]]
+                clipped_query_seq = clipped_query_seq[:-new_clip_lengths[1]]
+
+        # find mismatching bases between sequences
+        if clipped_ref_seq == clipped_query_seq:
+            new_md = str(len(clipped_ref_seq))
+
+        else:
+            new_md = ''
+            base_count = 0
+            for index, base in enumerate(clipped_ref_seq):
+                if base == clipped_query_seq[index]:
+                    base_count += 1
                 else:
-                    new_md += [md_piece]
-            # edits MD piece if a mismatched base already exists at that location
-            elif md_piece.isalpha():
-                for base_index, base in enumerate(md_piece):
-                    if base in bases:
-                        md_index += 1
-                    if var_index == int(md_index):
-                        if new_base == base:
-                            new_md[-1] += 1
-                        else:
-                            new_md += [base] + md_piece[base_index+1:] + split_md[index+1:]
-                        return ''.join(new_md)
-                    else:
-                        new_md += [base]
+                    new_md += str(base_count)
+                    new_md += base
+                    base_count = 0
+            if base_count != 0:
+                new_md += str(base_count)
 
-        return ''.join(new_md)
+        return new_md
 
 
-
-    def edit_seq_cigar_and_md (self, ref_seq, query_seq, cigartuples, md_tag, new_base, var_pos, ref_positions):
+    def edit_seq_and_cigar (self, ref_seq, query_seq, cigartuples, new_base, var_pos, ref_positions):
         '''
         Edit string, cigar string (mostly soft clips), and MD tag if changes
         are necessary
         '''
-
         if var_pos in ref_positions:
             #print (query_seq)
             var_index = ref_positions.index(var_pos)
@@ -371,23 +433,15 @@ class Samvar :
             new_cigar = ''
             clip_lengths = [0,0]
 
+            # check for soft clips
             if len(cigartuples) > 1:
+                # leading soft clip
                 if cigartuples[0][0] == 4:
                     clip_lengths[0] = cigartuples[0][1]
-                    print ('soft clip in front')
+                # ending soft clip
                 if cigartuples[-1][0] == 4:
                     clip_lengths[1] = cigartuples[-1][1]
-                    print ('soft clip at end')
-            #else:
-            print (ref_seq)
-            print (query_seq)
-            print (new_seq)
-            print (cigartuples)
-            print (clip_lengths)
-            print (md_tag)
-            new_md_tag = self.edit_md_tag(md_tag,new_base,var_index, ref_seq, query_seq, new_seq, clip_lengths)
-            print (new_md_tag)
-            #print (new_seq)
+
 
             # check if cigar is a perfect match - '101M'
             if cigartuples == [(0,101)]:
@@ -399,10 +453,7 @@ class Samvar :
                 else:
                     new_cigar = cigartuples
 
-
-                #new_md_tag = str(var_index) + new_base + str(100-var_index)
-                #print (new_seq)
-                return (new_seq, new_cigar, new_md_tag)
+                return (new_seq, new_cigar)
 
             else:
                 cigar_index = 0
@@ -417,8 +468,7 @@ class Samvar :
                             first_tuple[1] += 1
                             second_tuple[1] -= 1
                             new_cigar = [tuple(first_tuple),tuple(second_tuple)] + cigartuples[2:]
-                            #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
-                            return (new_seq, new_cigar, new_md_tag)
+                            return (new_seq, new_cigar)
 
                     # convert M to S at the end
                     elif op_index == len(cigartuples) - 2 and var_index == cigar_index:
@@ -428,52 +478,17 @@ class Samvar :
                             last_tuple[1] += 1
                             penultimate_tuple[1] -= 1
                             new_cigar = cigartuples[:-2] + [tuple(penultimate_tuple),tuple(last_tuple)]
-                            #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
-                            return (new_seq, new_cigar, new_md_tag)
+                            return (new_seq, new_cigar)
 
                     elif var_index < cigar_index:
-                        #new_md_tag = self.edit_md_tag(md_tag,new_base,var_index)
-                        return (new_seq, cigartuples, new_md_tag)
+                        return (new_seq, cigartuples)
 
-                return (new_seq, cigartuples, new_md_tag)
+                return new_seq, cigartuples
 
 
-            """
-                if alignment_seq[var_index - query_pos[0]] == new_base:
-                    new_op = 0
-                else:
-                    new_op = 4
-                    #print(test)
-                old_pos = 0
-                for cigar_index, cigar_tuple in enumerate(cigartuples):
-                    if var_index + 1 >= old_pos and var_index + 1 < old_pos + cigar_tuple[1]:
-                        if var_index == 0:
-                            first_cigar = list(cigartuples[0])
-                            first_cigar[1] -= 1
-                            #print ('first index')
-                            new_cigar = [(new_op,1)] + [tuple(first_cigar)] + cigartuples[1:]
-
-                        elif var_index == 100:
-                            last_tuple = list(cigartuples[-1])
-                            last_tuple[1] -= 1
-                            #print ('last index')
-                            new_cigar = cigartuples[:-1] + [tuple(last_tuple)] + [(new_op,1)]
-
-                        else:
-                            mid_tuple1 = list(cigartuples[cigar_index])
-                            mid_tuple2 = list(cigartuples[cigar_index])
-                            #print ('middle tuple')
-                            mid_tuple1[1] = (var_index - old_pos)
-                            mid_tuple2[1] -= (var_index - old_pos) + 1
-                            new_cigar = cigartuples[:cigar_index] + [tuple(mid_tuple1)] + [(new_op,1)] + [tuple(mid_tuple2)] + cigartuples[cigar_index+1:]
-
-                        cleaned_new_cigar = self.clean_cigar(new_cigar)
-                        return cleaned_new_cigar
-                    old_pos += cigar_tuple[1]
-            """
-            return (new_seq,cigartuples,md_tag)
+            return (new_seq,cigartuples)
         else:
-            return (query_seq,cigartuples,md_tag)
+            return (query_seq,cigartuples)
 
     def clean_cigar (self, cigar):
         '''
