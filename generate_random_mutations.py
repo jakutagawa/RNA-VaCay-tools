@@ -11,7 +11,7 @@ output:
 chr pos1    pos2    vaf base    mutation_type
 22  234234  234234  0.25    A   SNP
 
-python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 200 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -vc 5'UTR 3'UTR Missense_Mutation Nonsense_Mutation Nonstop_Mutation Silent
+python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 300 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -vc 5'UTR 3'UTR Missense_Mutation Nonsense_Mutation Nonstop_Mutation Silent Start_Codon_SNP
 """
 
 import sys
@@ -28,6 +28,7 @@ class RandomMutationListGenerator :
         self.seed_num = arguments.seed_num
         self.mut_num = arguments.mut_num
         self.random_vaf = arguments.random_vaf
+        self.variant_classes = arguments.variant_classes
 
         self.all_mutations = list()
         self.random_mutations = list()
@@ -86,11 +87,13 @@ class RandomMutationListGenerator :
                 pos2 = int(split_line[3])
                 mut_type = split_line[6]
                 mutation = split_line[14]
+                var_class = split_line[5]
                 line_num = counter
 
                 # some VAF values are split or missing or NA
                 vaf = split_line[28].split('|')[0]
                 if self.random_vaf:
+                    random.seed(self.seed_num)
                     vaf = round(random.random(),4)
                 elif vaf == 'NA' or not vaf:
                     vaf = 0
@@ -98,7 +101,7 @@ class RandomMutationListGenerator :
                     float_vaf = float(vaf)
 
                 # only yield if mutation type is correct and vaf not 0
-                if mut_type in (self.mut_type) and vaf > 0:
+                if mut_type in (self.mut_type) and vaf > 0 and var_class in self.variant_classes:
                     yield chrom,pos1,pos2,mut_type,mutation,vaf
 
 
@@ -134,7 +137,7 @@ class CommandLine() :
         self.parser.add_argument('-t','--mutationType', dest='mut_type',
                                  action='store', type=str, required=True,
                                  nargs='+', help='mutation types desired')
-        self.parser.add_argument('-vc','--variantClass', dest='variant_class',
+        self.parser.add_argument('-vc','--variantClass', dest='variant_classes',
                                  action='store', type=str, required=False,
                                  nargs='+', help='variant classes desired')
 
