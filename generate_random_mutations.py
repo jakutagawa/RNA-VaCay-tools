@@ -11,7 +11,7 @@ output:
 chr pos1    pos2    vaf base    mutation_type
 22  234234  234234  0.25    A   SNP
 
-python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 200 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt
+python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 200 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -vc 5'UTR 3'UTR Missense_Mutation Nonsense_Mutation Nonstop_Mutation Silent
 """
 
 import sys
@@ -134,6 +134,9 @@ class CommandLine() :
         self.parser.add_argument('-t','--mutationType', dest='mut_type',
                                  action='store', type=str, required=True,
                                  nargs='+', help='mutation types desired')
+        self.parser.add_argument('-vc','--variantClass', dest='variant_class',
+                                 action='store', type=str, required=False,
+                                 nargs='+', help='variant classes desired')
 
         self.parser.add_argument('-mf','--mafFilename', dest='maf_filename',
                                  action='store', type=str, required=True,
