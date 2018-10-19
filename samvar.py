@@ -584,8 +584,8 @@ class Samvar :
         pysam.index(sorted_output)
 
         # if you want to automatically convert to sam as well
-        sam_output = sorted_output[:-4] + ".sam"
-        pysam.view("-h","-o",sam_output,sorted_output, catch_stdout=False)
+        #sam_output = sorted_output[:-4] + ".sam"
+        #pysam.view("-h","-o",sam_output,sorted_output, catch_stdout=False)
 
         sys.stderr.write('New sorted bam file: ' + str(sorted_output) + '\n')
         sys.stderr.write('New sorted bam index file: ' + str(sorted_output) + '.bai\n')
