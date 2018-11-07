@@ -432,7 +432,7 @@ class Samvar :
         if clipped_ref_seq == clipped_query_seq:
             new_md = str(len(clipped_ref_seq))
 
-        else:
+        elif len(clipped_query_seq) >= clipped_ref_seq:
             new_md = ''
             base_count = 0
             #print (clipped_ref_seq)
@@ -446,6 +446,10 @@ class Samvar :
                     base_count = 0
             if base_count != 0:
                 new_md += str(base_count)
+        else:
+            sys.stderr.write('mismatched sequences calculating md tag at: \n')
+            sys.stderr.write(str(clipped_ref_seq) + '\n')
+            sys.stderr.write(str(clipped_query_seq) + '\n')
 
         return new_md
 
