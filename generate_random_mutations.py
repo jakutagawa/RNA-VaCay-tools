@@ -11,7 +11,7 @@ output:
 chr pos1    pos2    vaf base    mutation_type
 22  234234  234234  0.25    A   SNP
 
-python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 300 >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -vc 5'UTR 3'UTR Missense_Mutation Nonsense_Mutation Nonstop_Mutation Silent Start_Codon_SNP
+python generate_random_mutations.py -t SNP -mf /private/groups/brookslab/PCAWG/Oct2016_Freeze/October_2016_whitelist_2583.snv_mnv_indel.maf -n 300 -vc 5'UTR 3'UTR Missense_Mutation Nonsense_Mutation Nonstop_Mutation Silent Start_Codon_SNP >October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt
 """
 
 import sys
@@ -83,7 +83,7 @@ class RandomMutationListGenerator :
                 counter += 1
                 split_line = line.rstrip().split('\t')
                 chrom = split_line[1]
-                pos1 = int(split_line[2])
+                pos1 = int(split_line[2]) - 1 # convert to 0-based system
                 pos2 = int(split_line[3])
                 mut_type = split_line[6]
                 mutation = split_line[14]
