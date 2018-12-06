@@ -8,8 +8,9 @@ locations, base change, allele frequency and mutation type. Outputs new BAM/SAM
 file with variants.
 
 Sample commands -
-user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -is /scratch/jakutagawa/icgc/bams/test/testregion_chr22.sam -os /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.sam
-user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -ib /scratch/jakutagawa/icgc/bams/normal/DO46933/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam.with_variants.bam
+user$ python samvar.py -vf /scratch/jakutagawa/icgc/bams/test/test_snv.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr22.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr22.with_variants.bam
+user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only.txt -ib /scratch/jakutagawa/icgc/bams/test/testregion_chr1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/testregion_chr1.with_variants.bam
+user$ python samvar.py -vf /private/groups/brookslab/jakutagawa/variant_calling/synthetic_mutation_lists/October_2016_whitelist_2583.snv_mnv_indel.random_snp_only2.txt -ib /scratch/jakutagawa/icgc/bams/normal/DO46933/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam -ob /scratch/jakutagawa/icgc/bams/synthetic/PCAWG.764a33dc-dd34-11e4-8a0c-117cc254ba06.STAR.v1.bam.with_variants.bam
 '''
 import sys
 import random
@@ -76,7 +77,7 @@ class Samvar :
             for line in fileH:
                 split_line = line.rstrip().split('\t')
                 chromosome = split_line[0]
-                pos1 = int(split_line[1])
+                pos1 = int(split_line[1]) - 1 # change this later
                 pos2 = int(split_line[2])
                 vaf = float(split_line[3])
                 try:
@@ -128,6 +129,24 @@ class Samvar :
 
         sys.stderr.write('Randomly selected reads for mutation \n')
 
+    def getReverseComplement(self,sequence):
+        """
+        Returns the reverse complement of a sequence
+        """
+        complement = ''
+        for i in range(0,len(sequence)):
+            if sequence[i].upper() == 'A':
+                complement += 'T'
+            elif sequence[i].upper() == 'C':
+                complement += 'G'
+            elif sequence[i].upper() == 'G':
+                complement += 'C'
+            elif sequence[i].upper() == 'T':
+                complement += 'A'
+            else:
+                complement += 'X'
+        return complement[::-1]
+
     def mutate_read (self, read):
         '''
         Add mutations to read. Calls edit_sequence and edit_cigar to make
@@ -135,9 +154,9 @@ class Samvar :
         '''
         read_id = (read.query_name, read.reference_start)
         ref_positions = read.get_reference_positions(full_length = True)
-        ref_seq = read.get_reference_sequence()
-        old_seq = read.query_sequence
-        old_query_seq = read.query_sequence
+        ref_seq = str(read.get_reference_sequence())
+        old_seq = str(read.query_sequence)
+        old_query_seq = str(read.query_sequence)
         ref_cigar = read.cigartuples
         old_cigar = ref_cigar
         old_md = read.get_tag('MD')
@@ -146,22 +165,33 @@ class Samvar :
         query_pos = (read.query_alignment_start, read.query_alignment_end)
         edited_pos = list(ref_positions)
         #new_clip_lengths = [0,0]
-
+        mutation_pos_list = []
         #if len(self.reads_to_mutate[read_id]) > 2:
         #    print (read_id)
         #print (str(read_id) + ' has ' + str(len(self.reads_to_mutate[read_id])) + ' mutations')
         #print (old_cigar)
 
+
+
+        #print (len(self.reads_to_mutate[read_id]))
         for mutation in self.reads_to_mutate[read_id]:
             #print (mutation)
             var_pos1 = mutation[0]
             var_pos2 = mutation[1]
+
+            #if read_direction:
+            #    new_base = self.getReverseComplement(mutation[2])
+            #else:
             new_base = mutation[2]
+
 
             #new_seq = self.edit_sequence(old_seq,new_base,var_pos1,ref_positions)
             #old_seq = new_seq
 
             new_query_seq, new_cigar, edited_pos = self.edit_seq_and_cigar(ref_seq,old_query_seq,old_cigar,new_base,var_pos1,edited_pos)
+            #print (old_query_seq)
+            #print (new_query_seq)
+            #print ('hellllllo')
             old_query_seq = new_query_seq
             old_cigar = new_cigar
 
@@ -173,7 +203,24 @@ class Samvar :
 
         #if read.is_reverse:
         #    new_cigar.reverse()
-        new_md_tag = self.edit_md_tag(old_md, ref_cigar, new_cigar, ref_seq, new_query_seq)
+
+
+        #print (edited_pos)
+        #print (read_direction)
+        #print (old_md)
+        #print (old_seq)
+        #print (new_query_seq)
+        if new_query_seq != old_seq:
+            sys.stderr.write('mutated read at ' + str(read_id) + '\n')
+            new_md_tag = self.edit_md_tag(old_md, ref_cigar, new_cigar, ref_seq, old_seq, new_query_seq)
+        else:
+            new_md_tag = old_md
+
+        if not new_md_tag:
+            sys.stderr.write(str(read_id) + '\n')
+            sys.stderr.write(str(self.reads_to_mutate[read_id]) + '\n')
+            sys.stderr.write(str(query_pos) + '\n')
+            #sys.stderr.write(str(read.query_name) + '\n')"""
         new_nm_tag = self.edit_nm_tag(new_md_tag)
 
         if new_cigar[0][0] == 4:
@@ -343,7 +390,7 @@ class Samvar :
         nm_count = sum(md_piece.isalpha() for md_piece in md_tag)
         return nm_count
 
-    def edit_md_tag (self, md_tag, ref_cigar, new_cigar, ref_seq, new_query_seq):
+    def edit_md_tag (self, md_tag, ref_cigar, new_cigar, ref_seq, old_seq, new_query_seq):
         '''
         Edit existing MD tag based on mutation location and return updated MD
         tag
@@ -352,11 +399,13 @@ class Samvar :
         bases = ['A','C','T','G']
         md_index = 0
         new_md = list()
+        #[leading, ending]
         old_clip_lengths = [0,0]
         new_clip_lengths = [0,0]
         clip_dif = [0,0]
         clipped_ref_seq = ref_seq
         clipped_query_seq = new_query_seq
+        clipped_old_seq = old_seq
         #print (clipped_ref_seq)
 
         # check if ref and new cigar has a clip
@@ -432,7 +481,9 @@ class Samvar :
         if clipped_ref_seq == clipped_query_seq:
             new_md = str(len(clipped_ref_seq))
 
-        elif len(clipped_query_seq) >= clipped_ref_seq:
+        # seq lengths don't match due to indel
+        elif len(clipped_query_seq) >= len(clipped_ref_seq):
+
             new_md = ''
             base_count = 0
             #print (clipped_ref_seq)
@@ -446,10 +497,22 @@ class Samvar :
                     base_count = 0
             if base_count != 0:
                 new_md += str(base_count)
+            #if new_md != md_tag:
+            #    sys.stderr.write('yoooooo \n')
+        elif '^' in md_tag:
+            new_md = ''
+            base_count = 0
+            #print ('what the hell')
+            #print (split_md)
         else:
+            #clipped_query_seq
             sys.stderr.write('mismatched sequences calculating md tag at: \n')
+            sys.stderr.write(str(ref_seq) + '\n')
+            sys.stderr.write(str(new_query_seq) + '\n')
             sys.stderr.write(str(clipped_ref_seq) + '\n')
             sys.stderr.write(str(clipped_query_seq) + '\n')
+            sys.stderr.write(str(ref_cigar) + '\n')
+            sys.stderr.write(str(new_cigar) + '\n')
 
         return new_md
 
@@ -464,6 +527,12 @@ class Samvar :
             #print (query_seq)
             var_index = ref_positions.index(var_pos)
             new_seq = (query_seq[:var_index] + new_base + query_seq[var_index+1:])
+            if query_seq == 'CTCAACGGCACCAGCTTGCAGACGGCAAGGGACACCCCCAGAATGGCGTTCGCACCAAACTTAGATTTATTTTCTGTTCCATCCATCTCGATCATCAGTTT':
+                print ('query_seq check')
+                print (var_index)
+                print (ref_seq)
+                print (new_seq)
+                print (query_seq)
             new_cigar = ''
             clip_lengths = [0,0]
 
@@ -521,6 +590,7 @@ class Samvar :
                     elif var_index < cigar_index:
                         return new_seq, cigartuples, edited_positions
 
+
                 return new_seq, cigartuples, edited_positions
 
 
@@ -534,7 +604,7 @@ class Samvar :
         sections if necessary
         '''
         new_cigar = ''
-        # grab index position of 0S or 0M
+        # grab all index positions of possible 0S or 0M
         first_element = [i[1] for i in cigar]
 
         if 0 in first_element:
@@ -543,7 +613,7 @@ class Samvar :
             new_cigar = ''
 
             cigar[zero_index]
-            if zero_index-1 >= 0 and zero_index + 1 <= len(cigar):
+            if zero_index - 1 >= 0 and zero_index + 1 <= len(cigar):
                 if cigar[zero_index+1][0] == cigar[zero_index-1][0]:
                     merged_element = (cigar[zero_index+1][0],cigar[zero_index+1][1]+cigar[zero_index-1][1])
                     new_cigar = [merged_element] + cigar[zero_index+2:]
@@ -587,14 +657,21 @@ class Samvar :
         pysam.sort("-o",sorted_output,self.bam_output)
         pysam.index(sorted_output)
 
-        # if you want to automatically convert to sam as well
-        #sam_output = sorted_output[:-4] + ".sam"
-        #pysam.view("-h","-o",sam_output,sorted_output, catch_stdout=False)
+
 
         sys.stderr.write('New sorted bam file: ' + str(sorted_output) + '\n')
         sys.stderr.write('New sorted bam index file: ' + str(sorted_output) + '.bai\n')
 
+    def convert_to_sam (self):
+        '''
+        Convert input BAM to SAM format
+        '''
+        sorted_output = self.bam_output[:-4] + ".sorted.bam"
+        sam_output = sorted_output[:-4] + ".sam"
+        pysam.view("-h","-o",sam_output,sorted_output, catch_stdout=False)
+        sys.stderr.write('New sorted sam file: ' + str(sam_output) + '.sam\n')
 
+    # the following functions are all deprecated
     def load_reads (self):
         '''
         Deprecated. Fetch BAM region associated with each variant and saves to a dictionary
@@ -900,11 +977,7 @@ class Samvar :
 
         return split_cigar
 
-    def convert_to_sam (self):
-        '''
-        Incomplete. Convert input BAM to SAM format
-        '''
-        pysam.view()
+
 
     def output_reads_to_sam (self):
         '''
@@ -1019,6 +1092,7 @@ def main(my_command_line=None):
     my_samvar.count_and_shuffle_reads_with_variants()
     my_samvar.output_reads_to_bam()
     my_samvar.sort_and_index_bam()
+    #my_samvar.convert_to_sam()
 
 
 if __name__ == "__main__":
