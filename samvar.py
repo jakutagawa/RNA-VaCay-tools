@@ -17,7 +17,7 @@ import random
 import pysam
 import re
 
-from Bio import pairwise2
+#from Bio import pairwise2
 
 class Samvar :
     def __init__ (self, arguments):
@@ -191,7 +191,6 @@ class Samvar :
             new_query_seq, new_cigar, edited_pos = self.edit_seq_and_cigar(ref_seq,old_query_seq,old_cigar,new_base,var_pos1,edited_pos)
             #print (old_query_seq)
             #print (new_query_seq)
-            #print ('hellllllo')
             old_query_seq = new_query_seq
             old_cigar = new_cigar
 
@@ -655,12 +654,12 @@ class Samvar :
         '''
         sorted_output = self.bam_output[:-4] + ".sorted.bam"
         pysam.sort("-o",sorted_output,self.bam_output)
-        pysam.index(sorted_output)
+        #pysam.index(sorted_output)
 
 
 
         sys.stderr.write('New sorted bam file: ' + str(sorted_output) + '\n')
-        sys.stderr.write('New sorted bam index file: ' + str(sorted_output) + '.bai\n')
+        #sys.stderr.write('New sorted bam index file: ' + str(sorted_output) + '.bai\n')
 
     def convert_to_sam (self):
         '''
